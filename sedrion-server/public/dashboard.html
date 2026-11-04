@@ -1,0 +1,26 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sedrion: Drain sites</title><link rel="stylesheet" href="/style.css">
+<style>.row{display:grid;grid-template-columns:2fr 3fr 1.4fr;gap:1rem;align-items:center;padding:1rem 1.3rem;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.row:last-child{border:0}.row:hover{background:#eaf1f2}.nm{font:800 1.15rem Archivo,sans-serif}.row .t{margin-top:.35rem;font-weight:600;font-size:.9rem}.job{display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line)}@media(max-width:640px){.row{grid-template-columns:1fr}}</style></head>
+<body><header class="top"><a class="brand" href="/dashboard.html"><i></i>Sedrion</a><div class="who"><span id="who"></span><button class="btn alt" onclick="logout()">Sign out</button></div></header>
+<main class="wrap"><h1>Drain sites</h1><p class="mute" id="sum">Loading sites…</p>
+<p><button class="btn" id="add" hidden onclick="dlg(true)">Add site</button></p>
+<section class="panel" id="mine" hidden><h2>Your assignments</h2><div id="jobs"></div></section>
+<section class="panel" style="padding:0"><div id="rows"></div></section></main>
+<div class="bg" id="bg"><form class="panel modal" onsubmit="save(event)"><h2>Add site</h2><label for="n">Site name</label><input id="n" placeholder="Alabang drain 1" required><label for="la">Latitude</label><input id="la" inputmode="decimal" placeholder="14.413" required><label for="lo">Longitude</label><input id="lo" inputmode="decimal" placeholder="121.049" required><p class="bad" id="e" role="alert" style="margin:0 0 .6rem"></p><button class="btn">Save site</button> <button type="button" class="btn alt" onclick="dlg(false)">Cancel</button></form></div>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script><script>
+let me;
+async function load(){
+  const sites=await j('/api/sites');
+  const det=await Promise.all(sites.map(s=>j('/api/sites/'+s.site_id).catch(()=>({site:s,latest:null,prediction:null}))));
+  let crit=0;
+  $('rows').innerHTML=det.map(d=>{const s=d.site,l=d.latest;const p=l&&l.tof_mm>=0?pct(l.tof_mm,s):null;const t=tone(p);if(p>=80)crit++;
+    return `<a class="row" href="/site.html?id=${s.site_id}"><div><div class="nm">${esc(s.name)}</div><div class="mute">${(+s.lat).toFixed(4)}, ${(+s.lon).toFixed(4)}</div></div><div><div class="bar"><i style="width:${p||0}%;--c:${t.c}"></i></div><div class="t ${t.k}">${p==null?t.w:Math.round(p)+'% full, '+t.w.toLowerCase()}</div></div><div class="mute">${left(d.prediction&&d.prediction.predicted_hours_remaining)}</div></a>`}).join('')||'<p class="mute" style="padding:1.3rem">No sites yet. Add the first one to start monitoring.</p>';
+  $('sum').textContent=det.length+(det.length===1?' site':' sites')+(crit?', '+crit+' need clearing now':', none need clearing');
+}
+async function jobs(){const a=await j('/api/my-assignments');$('mine').hidden=false;
+  $('jobs').innerHTML=a.map(x=>`<div class="job"><span><b>${esc(x.site_name)}</b> <span class="mute">${esc(x.status)}</span></span><button class="btn alt" onclick="done(${x.id})">Mark done</button></div>`).join('')||'<p class="mute">Nothing assigned to you right now.</p>'}
+async function done(id){try{await j('/api/assignments/'+id+'/complete',null);toast('Assignment completed.');jobs()}catch(x){toast(x.message)}}
+function dlg(o){$('bg').classList.toggle('on',o);$('e').textContent=''}
+async function save(ev){ev.preventDefault();try{await j('/api/sites',{name:$('n').value,lat:parseFloat($('la').value),lon:parseFloat($('lo').value)});dlg(false);toast('Site added.');load()}catch(x){$('e').textContent=x.message}}
+(async()=>{me=await who();if(me.role==='admin')$('add').hidden=false;else jobs();await load();setInterval(load,15000)})();
+</script></body></html>

@@ -1,0 +1,7 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sedrion: Sign in</title><link rel="stylesheet" href="/style.css">
+<style>body{display:grid;place-items:center;padding:1rem}.box{width:min(380px,100%)}.big{font:800 clamp(3rem,12vw,5rem)/.9 Archivo,sans-serif;margin:0 0 .6rem;letter-spacing:-.04em}.box .btn{width:100%;padding:.8rem}#err{min-height:1.4rem;margin:.6rem 0 0;color:var(--bad);font-size:.9rem}</style></head>
+<body><main class="box"><p class="big">Sedrion</p><p class="mute" style="margin:0 0 1.4rem">Know which drain filter fills next, before it floods.</p>
+<form class="panel" onsubmit="go(event)"><label for="u">Username</label><input id="u" autocomplete="username" required><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required><button class="btn">Sign in</button><p id="err" role="alert"></p></form></main>
+<script src="/app.js"></script><script>
+async function go(e){e.preventDefault();try{await j('/api/login',{username:$('u').value,password:$('p').value});location.href='/dashboard.html'}catch(x){$('err').textContent=x.message==='Invalid username or password'?'Wrong username or password.':x.message}}
+</script></body></html>

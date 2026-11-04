@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sedrion: Site</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .hero {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 1.6rem;
+    }
+
+    .gw {
+      position: relative;
+      width: 64px;
+      height: 300px;
+      margin: 0 0 0 14px;
+      border: 2px solid var(--ink);
+      background: #fff;
+    }
+
+    .gw i {
+      position: absolute;
+      inset: auto 0 0;
+      height: 0;
+      background: var(--c, var(--water));
+      transition: height 1s cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .gw:after {
+      content: "";
+      position: absolute;
+      inset: 0 0 0 55%;
+      background: repeating-linear-gradient(
+        to top,
+        transparent 0 calc(10% - 1px),
+        var(--ink) calc(10% - 1px) 10%
+      );
+    }
+
+    .gw b {
+      position: absolute;
+      left: 72px;
+      font-size: .75rem;
+      transform: translateY(50%);
+    }
+
+    .pc {
+      font: 800 3rem/1 Archivo, sans-serif;
+      margin: 0;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: .35rem 1.2rem;
+      margin: 1rem 0 0;
+    }
+
+    dt {
+      color: var(--mute);
+      font-size: .9rem;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .sl {
+      font: 800 1.4rem Archivo, sans-serif;
+      margin: .3rem 0 0;
+    }
+
+    .chart {
+      position: relative;
+      height: 250px;
+    }
+
+    #map {
+      height: 280px;
+      border: 1px solid var(--ink);
+    }
+
+    .leaflet-tile-pane {
+      filter: saturate(.5) contrast(.95);
+    }
+
+    .node {
+      display: flex;
+      justify-content: space-between;
+      padding: .5rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .acts {
+      display: flex;
+      gap: .7rem;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="top">
+    <a class="brand" href="/dashboard.html"><i></i>Sedrion</a>
+    <div class="who">
+      <a href="/dashboard.html">All sites</a>
+      <span id="who"></span>
+      <button class="btn alt" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel hero">
+      <div>
+        <p class="pc" id="pc">–</p>
+        <div class="gw" id="gw">
+          <i id="gf"></i>
+          <b style="bottom:100%">Full</b>
+          <b style="bottom:50%">Half</b>
+          <b style="bottom:0">Empty</b>
+        </div>
+      </div>
+      <div>
+        <h1 id="nm">Loading…</h1>
+        <p class="mute" id="meta"></p>
+        <p class="sl" id="st"></p>
+        <dl>
+          <dt>Distance to debris</dt><dd id="tof">–</dd>
+          <dt>Rain</dt><dd id="rain">–</dd>
+          <dt>Signal</dt><dd id="rssi">–</dd>
+          <dt>Last reading</dt><dd id="upd">–</dd>
+          <dt>Last cleared</dt><dd id="clr">–</dd>
+          <dt>Forecast</dt><dd id="pred">–</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Distance history</h2>
+      <div class="chart"><canvas id="ch"></canvas></div>
+    </section>
+
+    <section class="panel">
+      <h2>Location</h2>
+      <div id="map"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Nodes at this site</h2>
+      <div id="nodes"></div>
+    </section>
+
+    <section class="panel acts" id="acts"></section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get('id');
+    const B = '/api/sites/' + encodeURIComponent(id);
+    let me, chart, map;
+
+    function show(d) {
+      const s = d.site;
+      const l = d.latest;
+
+      $('nm').textContent = s.name;
+      document.title = 'Sedrion: ' + s.name;
+      $('meta').textContent =
+        (+s.lat).toFixed(4) + ', ' + (+s.lon).toFixed(4) +
+        (s.elevation_relative != null ? ', elevation ' + s.elevation_relative + ' m' : '');
+
+      const ok = l && l.tof_mm >= 0;
+      const p = ok ? pct(l.tof_mm, s) : null;
+      const t = tone(p);
+
+      $('pc').textContent = ok ? Math.round(p) + '%' : '–';
+      $('gf').style.height = (p || 0) + '%';
+      $('gf').style.setProperty('--c', t.c);
+
+      $('st').textContent = l ? (ok ? t.w : 'Sensor out of range') : 'Waiting for the first reading';
+      $('st').className = 'sl ' + t.k;
+
+      $('tof').textContent = l ? (ok ? l.tof_mm + ' mm' : 'No echo') : '–';
+      $('rain').textContent = l ? (l.rain ? 'Raining' : 'Dry') : '–';
+      $('rssi').textContent = l ? Math.round(l.rssi) + ' dBm' : '–';
+      $('upd').textContent = l ? new Date(l.time).toLocaleString() + ' from ' + l.node_id : 'None yet';
+      $('clr').textContent = d.lastClear ? new Date(d.lastClear.cleared_at).toLocaleString() : 'Never logged';
+      $('pred').textContent = left(d.prediction && d.prediction.predicted_hours_remaining);
+
+      $('nodes').innerHTML = d.nodes.map(n => `
+        <div class="node">
+          <span>${esc(n.node_id)}${l && l.node_id === n.node_id ? ' <span class="ok">(reporting now)</span>' : ''}</span>
+          <span class="mute">${esc(n.status)}</span>
+        </div>`).join('') || '<p class="mute">No nodes registered here yet.</p>';
+
+      if (!map) {
+        map = L.map('map').setView([s.lat, s.lon], 16);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        L.marker([s.lat, s.lon]).addTo(map);
+      }
+    }
+
+    function plot(r, s) {
+      const lb = r.map(x => new Date(x.time).toLocaleString());
+      const dt = r.map(x => x.tof_mm >= 0 ? x.tof_mm : null);
+
+      if (!chart) {
+        Chart.defaults.color = '#5d7185';
+        chart = new Chart($('ch'), {
+          type: 'line',
+          data: {
+            labels: lb,
+            datasets: [{
+              label: 'Distance (mm)',
+              data: dt,
+              borderColor: '#1f6f9f',
+              backgroundColor: 'rgba(31,111,159,.12)',
+              fill: true,
+              pointRadius: 0,
+              tension: .25,
+              spanGaps: true
+            }]
+          },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                suggestedMin: s.full_mm ?? 50,
+                suggestedMax: s.empty_mm ?? 500,
+                title: { display: true, text: 'mm to debris (lower means fuller)' }
+              },
+              x: { ticks: { maxTicksLimit: 6 } }
+            }
+          }
+        });
+      } else {
+        chart.data.labels = lb;
+        chart.data.datasets[0].data = dt;
+        chart.update();
+      }
+    }
+
+    async function refresh() {
+      try {
+        const d = await j(B);
+        show(d);
+        plot(await j(B + '/readings?limit=100'), d.site);
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    function acts() {
+      const a = $('acts');
+      a.innerHTML = '';
+
+      const mk = (text, fn, alt) => {
+        const b = document.createElement('button');
+        b.className = 'btn' + (alt ? ' alt' : '');
+        b.textContent = text;
+        b.onclick = fn;
+        a.append(b);
+      };
+
+      mk('Mark as cleared', async () => {
+        if (!confirm('Log this site as cleared now? Clear events train the prediction model.')) return;
+        try {
+          await j(B + '/clear', null);
+          toast('Marked as cleared.');
+          refresh();
+        } catch (x) {
+          toast(x.message);
+        }
+      });
+
+      if (me.role === 'admin') {
+        mk('Add node', async () => {
+          const nid = prompt('Enter the node ID (must match the nodeTag your device sends):');
+          if (!nid || !nid.trim()) return;
+          try {
+            await j(B + '/nodes', { node_id: nid.trim() });
+            toast('Node added.');
+            refresh();
+          } catch (x) {
+            toast(x.message);
+          }
+        }, true);
+
+        mk('Assign a cleaner', async () => {
+          try {
+            const c = (await j('/api/users')).filter(u => u.role === 'cleaner');
+            if (!c.length) return toast('No cleaner accounts yet.');
+            const p = prompt('Enter the user id to assign:\n' + c.map(u => u.user_id + ': ' + u.username).join('\n'));
+            const w = c.find(u => String(u.user_id) === p);
+            if (!w) return;
+            await j(B + '/assign', { assignedTo: w.user_id });
+            toast('Assigned to ' + w.username + '.');
+          } catch (x) {
+            toast(x.message);
+          }
+        }, true);
+      }
+    }
+
+    (async () => {
+      if (!id) {
+        $('nm').textContent = 'No site selected';
+        return;
+      }
+      me = await who();
+      acts();
+      await refresh();
+      setInterval(refresh, 10000);
+    })();
+  </script>
+</body>
+</html>
