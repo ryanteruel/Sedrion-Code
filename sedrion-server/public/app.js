@@ -25,7 +25,7 @@ async function j(u, body, method) {
 }
 
 const pct = (t, s) => {
-  const e = s.empty_mm ?? 500, f = s.full_mm ?? 50;
+  const e = 207, f = s.full_mm ?? 50;
   return Math.max(0, Math.min(100, (e - t) / (e - f) * 100));
 };
 
