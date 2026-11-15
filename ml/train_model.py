@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -6,13 +7,10 @@ from sklearn.metrics import mean_absolute_error
 import joblib
 import psycopg2
 
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "sedrion",
-    "user": "postgres",
-    "password": "YOUR_POSTGRES_PASSWORD",
-}
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres.qjtujrfmzhquvynytunp:Rainheel070712@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+)
 
 
 def get_node_ids(conn):
@@ -108,7 +106,7 @@ def train_for_node(conn, node_id):
 
 
 def main():
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(DATABASE_URL)
     for node_id in get_node_ids(conn):
         train_for_node(conn, node_id)
     conn.close()

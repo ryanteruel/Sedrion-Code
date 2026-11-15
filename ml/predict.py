@@ -15,13 +15,10 @@ import joblib
 import psycopg2
 from pathlib import Path
 
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "sedrion",
-    "user": "postgres",
-    "password": os.environ.get("PGPASSWORD", "ruru0431"),   # env var first, else edit this line
-}
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres.qjtujrfmzhquvynytunp:Rainheel070712@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+)
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"   # the "models" folder next to this file
 BOOTSTRAP_MODEL = MODELS_DIR / "sedrion_rf.joblib"
@@ -70,12 +67,13 @@ def calculate_rate_of_change(readings):
     slope, _ = np.polyfit(hours, valid['tof_mm'], 1)
     return -slope
 
-
 def bootstrap_hours(model, minutes_since_clear, tof_mm_values, rain_values):
     """Pure function (easy to test). tof in mm -> cm; rain -> ADC the model expects; minutes -> hours out."""
-    tof_cm = float(np.median(tof_mm_values)) / 10.0              # median of recent readings: kills splash/stale spikes
+    tof_cm = float(np.median(tof_mm_values)) / 10.0
     if tof_cm <= FULL_CM:
         return 0.0
+    EMPTY_CM = 20.7
+    tof_cm = FULL_CM + (tof_cm - FULL_CM) * ((31.0 - FULL_CM) / (EMPTY_CM - FULL_CM))
     rain = float(np.median(rain_values))
     adc = rain if RAIN_IS_INVERTED else RAIN_MAX - rain
     X = pd.DataFrame([[minutes_since_clear, tof_cm, adc]], columns=BOOT_FEATURES)
@@ -116,14 +114,14 @@ def predict_for_node(conn, node_id, boot_model):
         source = "SIMULATED-data model"
 
     cur = conn.cursor()
-    cur.execute("INSERT INTO predictions (site_id, node_id, predicted_at, predicted_hours_remaining) "
-                "VALUES (%s, %s, NOW(), %s)", (site_id, node_id, hours))
+    cur.execute("INSERT INTO predictions (site_id, predicted_at, predicted_hours_remaining) "
+                "VALUES (%s, NOW(), %s)", (site_id, hours))
     conn.commit()
     print(f"{node_id} (site {site_id}): ~{hours:.1f} h until full  [{source}]")
 
 
 def run_once():
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(DATABASE_URL)
     boot_model = joblib.load(BOOTSTRAP_MODEL)
     for node_id in pd.read_sql("SELECT DISTINCT node_id FROM sensor_readings", conn)['node_id'].tolist():
         try:
