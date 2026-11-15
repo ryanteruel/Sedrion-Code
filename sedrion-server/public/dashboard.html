@@ -1,26 +1,399 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sedrion: Drain sites</title><link rel="stylesheet" href="/style.css">
-<style>.row{display:grid;grid-template-columns:2fr 3fr 1.4fr;gap:1rem;align-items:center;padding:1rem 1.3rem;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.row:last-child{border:0}.row:hover{background:#eaf1f2}.nm{font:800 1.15rem Archivo,sans-serif}.row .t{margin-top:.35rem;font-weight:600;font-size:.9rem}.job{display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line)}@media(max-width:640px){.row{grid-template-columns:1fr}}</style></head>
-<body><header class="top"><a class="brand" href="/dashboard.html"><i></i>Sedrion</a><div class="who"><span id="who"></span><button class="btn alt" onclick="logout()">Sign out</button></div></header>
-<main class="wrap"><h1>Drain sites</h1><p class="mute" id="sum">Loading sites…</p>
-<p><button class="btn" id="add" hidden onclick="dlg(true)">Add site</button></p>
-<section class="panel" id="mine" hidden><h2>Your assignments</h2><div id="jobs"></div></section>
-<section class="panel" style="padding:0"><div id="rows"></div></section></main>
-<div class="bg" id="bg"><form class="panel modal" onsubmit="save(event)"><h2>Add site</h2><label for="n">Site name</label><input id="n" placeholder="Alabang drain 1" required><label for="la">Latitude</label><input id="la" inputmode="decimal" placeholder="14.413" required><label for="lo">Longitude</label><input id="lo" inputmode="decimal" placeholder="121.049" required><p class="bad" id="e" role="alert" style="margin:0 0 .6rem"></p><button class="btn">Save site</button> <button type="button" class="btn alt" onclick="dlg(false)">Cancel</button></form></div>
-<div class="toast" id="toast"></div>
-<script src="/app.js"></script><script>
-let me;
-async function load(){
-  const sites=await j('/api/sites');
-  const det=await Promise.all(sites.map(s=>j('/api/sites/'+s.site_id).catch(()=>({site:s,latest:null,prediction:null}))));
-  let crit=0;
-  $('rows').innerHTML=det.map(d=>{const s=d.site,l=d.latest;const p=l&&l.tof_mm>=0?pct(l.tof_mm,s):null;const t=tone(p);if(p>=80)crit++;
-    return `<a class="row" href="/site.html?id=${s.site_id}"><div><div class="nm">${esc(s.name)}</div><div class="mute">${(+s.lat).toFixed(4)}, ${(+s.lon).toFixed(4)}</div></div><div><div class="bar"><i style="width:${p||0}%;--c:${t.c}"></i></div><div class="t ${t.k}">${p==null?t.w:Math.round(p)+'% full, '+t.w.toLowerCase()}</div></div><div class="mute">${left(d.prediction&&d.prediction.predicted_hours_remaining)}</div></a>`}).join('')||'<p class="mute" style="padding:1.3rem">No sites yet. Add the first one to start monitoring.</p>';
-  $('sum').textContent=det.length+(det.length===1?' site':' sites')+(crit?', '+crit+' need clearing now':', none need clearing');
-}
-async function jobs(){const a=await j('/api/my-assignments');$('mine').hidden=false;
-  $('jobs').innerHTML=a.map(x=>`<div class="job"><span><b>${esc(x.site_name)}</b> <span class="mute">${esc(x.status)}</span></span><button class="btn alt" onclick="done(${x.id})">Mark done</button></div>`).join('')||'<p class="mute">Nothing assigned to you right now.</p>'}
-async function done(id){try{await j('/api/assignments/'+id+'/complete',null);toast('Assignment completed.');jobs()}catch(x){toast(x.message)}}
-function dlg(o){$('bg').classList.toggle('on',o);$('e').textContent=''}
-async function save(ev){ev.preventDefault();try{await j('/api/sites',{name:$('n').value,lat:parseFloat($('la').value),lon:parseFloat($('lo').value)});dlg(false);toast('Site added.');load()}catch(x){$('e').textContent=x.message}}
-(async()=>{me=await who();if(me.role==='admin')$('add').hidden=false;else jobs();await load();setInterval(load,15000)})();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sedrion: Drain sites</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .row {
+      display: grid;
+      grid-template-columns: 2fr 2.6fr 1.2fr 1.3fr;
+      gap: 1rem;
+      align-items: center;
+      padding: 1rem 1.3rem;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+    }
+    .row:last-child { border: 0; }
+    .row:hover { background: #eaf1f2; }
+    .nm { font: 800 1.15rem Archivo, sans-serif; }
+    .row .t { margin-top: .35rem; font-weight: 600; font-size: .9rem; }
+    .job {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .6rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .job:last-child { border: 0; }
+
+    /* Admin Fleet Node Controls */
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: .9rem;
+      margin-top: .8rem;
+    }
+    .ncard {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: .9rem 1rem;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+    }
+    .ncard-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge {
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: .2rem .55rem;
+      border-radius: 999px;
+      letter-spacing: .04em;
+    }
+    .badge.op { background: #dff4ea; color: #136f42; }
+    .badge.chg { background: #fff3cd; color: #8a5a00; }
+    .bat-low { color: var(--bad); font-weight: 700; }
+    .bat-ok { color: var(--ok); font-weight: 700; }
+
+    /* Interactive Map Modal */
+    .modal.map-modal {
+      width: min(680px, 94vw);
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+    .search-bar {
+      display: flex;
+      gap: .5rem;
+      margin-bottom: .7rem;
+    }
+    .search-bar input {
+      flex: 1;
+      margin: 0;
+    }
+    #pick-map {
+      height: 300px;
+      width: 100%;
+      border: 1px solid var(--ink);
+      border-radius: 6px;
+      margin-bottom: .8rem;
+    }
+    .coord-pill {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f1f5f7;
+      padding: .5rem .8rem;
+      border-radius: 6px;
+      font-size: .88rem;
+      margin-bottom: .8rem;
+    }
+
+    @media (max-width: 760px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/dashboard.html"><i></i>Sedrion</a>
+    <div class="who">
+      <span id="who"></span>
+      <button class="btn alt" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.8rem">
+      <div>
+        <h1 style="margin-bottom:.2rem">Drain sites</h1>
+        <p class="mute" id="sum" style="margin:0">Loading sites…</p>
+      </div>
+      <button class="btn" id="add" hidden onclick="dlg(true)">+ Add site on map</button>
+    </div>
+
+    <!-- Worker / Cleaner Assignments -->
+    <section class="panel" id="mine" hidden>
+      <h2>Your assigned drains</h2>
+      <div id="jobs"></div>
+    </section>
+
+    <!-- Admin Fleet Mode & Battery Command Center -->
+    <section class="panel" id="fleet-sec" hidden>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+        <h2 style="margin:0">Node fleet &amp; power modes</h2>
+        <span class="mute" style="font-size:.85rem">Switch field nodes between LoRa Operational and ESP-NOW Charging</span>
+      </div>
+      <div class="node-grid" id="fleet"></div>
+    </section>
+
+    <!-- Sites Overview -->
+    <section class="panel" style="padding:0">
+      <div id="rows"></div>
+    </section>
+  </main>
+
+  <!-- Interactive Map Picker Modal -->
+  <div class="bg" id="bg">
+    <form class="panel modal map-modal" onsubmit="save(event)">
+      <h2 style="margin-top:0">Pin new drain site</h2>
+      <p class="mute" style="margin-top:-.4rem;font-size:.9rem">
+        Search a street/landmark or click anywhere on the map to drop and drag the pin.
+      </p>
+
+      <div class="search-bar">
+        <input id="q" type="text" placeholder="Search location (e.g. Alabang-Zapote Rd, Muntinlupa)">
+        <button type="button" class="btn alt" onclick="searchPlace()">Find</button>
+      </div>
+
+      <div id="pick-map"></div>
+
+      <div class="coord-pill">
+        <span><b>Pinned Coordinates:</b> <span id="coord-lbl">Click map to select</span></span>
+        <span class="mute" id="geo-status"></span>
+      </div>
+
+      <input type="hidden" id="la" required>
+      <input type="hidden" id="lo" required>
+
+      <label for="n">Site name (auto-filled from pin, editable)</label>
+      <input id="n" placeholder="e.g. Alabang Drain #1" required>
+
+      <p class="bad" id="e" role="alert" style="margin:0 0 .6rem"></p>
+      <div style="display:flex;gap:.6rem">
+        <button class="btn" type="submit">Save pinned site</button>
+        <button type="button" class="btn alt" onclick="dlg(false)">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    let me, pickMap, pickMarker;
+
+    function batText(mv) {
+      if (mv == null) return '<span class="mute">Bat: –</span>';
+      const v = (mv / 1000).toFixed(2);
+      const p = Math.max(0, Math.min(100, Math.round((mv - 3000) / (4200 - 3000) * 100)));
+      const cls = mv < 3150 ? 'bat-low' : 'bat-ok';
+      return `<span class="${cls}">🔋 ${v}V (${p}%)</span>`;
+    }
+
+    async function load() {
+      const sites = await j('/api/sites');
+      const det = await Promise.all(
+        sites.map(s => j('/api/sites/' + s.site_id).catch(() => ({ site: s, latest: null, prediction: null, nodes: [] })))
+      );
+
+      let crit = 0;
+      $('rows').innerHTML = det.map(d => {
+        const s = d.site, l = d.latest;
+        const p = l && l.tof_mm >= 0 ? pct(l.tof_mm, s) : null;
+        const t = tone(p);
+        if (p >= 80) crit++;
+
+        const activeNode = (d.nodes || [])[0];
+        const batHtml = activeNode ? batText(activeNode.battery_mv) : '';
+        const lowAlert = activeNode && activeNode.battery_mv && activeNode.battery_mv < 3150
+          ? ' <span class="bad" style="font-size:.82rem">• Swap battery</span>' : '';
+
+        return `
+          <a class="row" href="/site.html?id=${s.site_id}">
+            <div>
+              <div class="nm">${esc(s.name)}</div>
+              <div class="mute">${(+s.lat).toFixed(5)}, ${(+s.lon).toFixed(5)}</div>
+            </div>
+            <div>
+              <div class="bar"><i style="width:${p || 0}%;--c:${t.c}"></i></div>
+              <div class="t ${t.k}">${p == null ? t.w : Math.round(p) + '% full, ' + t.w.toLowerCase()}</div>
+            </div>
+            <div>${batHtml}${lowAlert}</div>
+            <div class="mute">${left(d.prediction && d.prediction.predicted_hours_remaining)}</div>
+          </a>`;
+      }).join('') || '<p class="mute" style="padding:1.3rem">No sites yet. Add the first one to start monitoring.</p>';
+
+      $('sum').textContent =
+        det.length + (det.length === 1 ? ' site' : ' sites') +
+        (crit ? ', ' + crit + ' need clearing now' : ', none need clearing');
+
+      if (me && me.role === 'admin') {
+        await loadFleet();
+      }
+    }
+
+    async function loadFleet() {
+      const nodes = await j('/api/nodes');
+      $('fleet-sec').hidden = false;
+      $('fleet').innerHTML = nodes.map(n => {
+        const isCharging = n.mode === 'charging';
+        const nextMode = isCharging ? 'operational' : 'charging';
+        const btnLabel = isCharging ? 'Switch to Operational (LoRa)' : 'Switch to Charging (ESP-NOW)';
+        return `
+          <div class="ncard">
+            <div class="ncard-top">
+              <strong>Node ${esc(n.node_id)} ${n.device_id != null ? `(ID #${n.device_id})` : ''}</strong>
+              <span class="badge ${isCharging ? 'chg' : 'op'}">${esc(n.mode || 'operational')}</span>
+            </div>
+            <div class="mute" style="font-size:.85rem">Site: ${esc(n.site_name || 'Unassigned')}</div>
+            <div style="font-size:.9rem">${batText(n.battery_mv)}</div>
+            <button class="btn ${isCharging ? '' : 'alt'}" style="margin-top:.3rem;font-size:.82rem;padding:.45rem .7rem"
+              onclick="switchMode('${esc(n.node_id)}', '${nextMode}')">
+              ${btnLabel}
+            </button>
+          </div>`;
+      }).join('') || '<p class="mute">No nodes registered yet. Open a site to register a node.</p>';
+    }
+
+    async function switchMode(nodeId, mode) {
+      try {
+        await j('/api/nodes/' + encodeURIComponent(nodeId) + '/mode', { mode });
+        toast(`Sent ${mode.toUpperCase()} command to Node ${nodeId}`);
+        loadFleet();
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    async function jobs() {
+      const a = await j('/api/my-assignments');
+      $('mine').hidden = false;
+      $('jobs').innerHTML = a.map(x => `
+        <div class="job">
+          <span>
+            <b><a href="/site.html?id=${x.site_id}" style="color:inherit">${esc(x.site_name)}</a></b>
+            <span class="mute">(${(+x.lat).toFixed(4)}, ${(+x.lon).toFixed(4)}) • ${esc(x.status)}</span>
+          </span>
+          <button class="btn alt" onclick="done(${x.id})">Mark done</button>
+        </div>`).join('') || '<p class="mute">Nothing assigned to you right now.</p>';
+    }
+
+    async function done(id) {
+      try {
+        await j('/api/assignments/' + id + '/complete', null);
+        toast('Assignment completed.');
+        jobs();
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    // ---------- Interactive Map Picker ----------
+    function initPickMap() {
+      if (pickMap) {
+        setTimeout(() => pickMap.invalidateSize(), 100);
+        return;
+      }
+      // Default center: Muntinlupa / Alabang
+      const startLat = 14.4130, startLon = 121.0490;
+      pickMap = L.map('pick-map').setView([startLat, startLon], 15);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(pickMap);
+
+      pickMap.on('click', e => setPin(e.latlng.lat, e.latlng.lng, true));
+    }
+
+    async function setPin(lat, lon, autoName) {
+      $('la').value = lat.toFixed(6);
+      $('lo').value = lon.toFixed(6);
+      $('coord-lbl').textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+
+      if (!pickMarker) {
+        pickMarker = L.marker([lat, lon], { draggable: true }).addTo(pickMap);
+        pickMarker.on('dragend', () => {
+          const p = pickMarker.getLatLng();
+          setPin(p.lat, p.lng, true);
+        });
+      } else {
+        pickMarker.setLatLng([lat, lon]);
+      }
+
+      if (autoName) {
+        $('geo-status').textContent = 'Looking up street…';
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+          const data = await res.json();
+          const road = data.address?.road || data.address?.suburb || data.name || '';
+          const brgy = data.address?.neighbourhood || data.address?.village || data.address?.city || '';
+          const suggested = [road, brgy].filter(Boolean).join(' - ');
+          if (suggested) $('n').value = suggested + ' Drain';
+          $('geo-status').textContent = 'Pinned';
+        } catch {
+          $('geo-status').textContent = '';
+        }
+      }
+    }
+
+    async function searchPlace() {
+      const query = $('q').value.trim();
+      if (!query) return;
+      $('geo-status').textContent = 'Searching…';
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`);
+        const results = await res.json();
+        if (!results.length) {
+          $('geo-status').textContent = 'No match found';
+          return;
+        }
+        const hit = results[0];
+        const lat = parseFloat(hit.lat), lon = parseFloat(hit.lon);
+        pickMap.setView([lat, lon], 17);
+        await setPin(lat, lon, true);
+      } catch {
+        $('geo-status').textContent = 'Search failed';
+      }
+    }
+
+    function dlg(o) {
+      $('bg').classList.toggle('on', o);
+      $('e').textContent = '';
+      if (o) {
+        initPickMap();
+      }
+    }
+
+    async function save(ev) {
+      ev.preventDefault();
+      if (!$('la').value || !$('lo').value) {
+        $('e').textContent = 'Click on the map first to drop a pin.';
+        return;
+      }
+      try {
+        await j('/api/sites', {
+          name: $('n').value.trim(),
+          lat: parseFloat($('la').value),
+          lon: parseFloat($('lo').value)
+        });
+        dlg(false);
+        $('n').value = '';
+        toast('Site added.');
+        load();
+      } catch (x) {
+        $('e').textContent = x.message;
+      }
+    }
+
+    (async () => {
+      me = await who();
+      if (me.role === 'admin') {
+        $('add').hidden = false;
+      } else {
+        jobs();
+      }
+      await load();
+      setInterval(load, 15000);
+    })();
+  </script>
+</body>
+</html>

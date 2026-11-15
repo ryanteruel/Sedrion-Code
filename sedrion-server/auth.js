@@ -1,13 +1,20 @@
 const bcrypt = require('bcrypt');
 const db = require('./db');
 
-async function registerUser(username, password, role = 'cleaner') {
-  const existing = await db.getUserByUsername(username);
-  if (existing) {
-    throw new Error('Username already taken');
-  }
-  const passwordHash = await bcrypt.hash(password, 10);
-  return db.createUser({ username, passwordHash, role });
+async function registerUser(username, password, role = 'cleaner', profile = {}) {
+  const hash = await bcrypt.hash(password, 10);
+  return db.createUser({
+    username,
+    passwordHash: hash,
+    role,
+    fullName: profile.fullName || null,
+    deploymentArea: profile.deploymentArea || 'Unassigned',
+    contactNumber: profile.contactNumber || null,
+    avatarUrl: profile.avatarUrl || null,
+    ntfyTopic: profile.ntfyTopic || null,
+    isActive: profile.isActive !== undefined ? profile.isActive : true,
+    activationCode: profile.activationCode || null,
+  });
 }
 
 async function verifyLogin(username, password) {
@@ -17,7 +24,19 @@ async function verifyLogin(username, password) {
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) return null;
 
+  if (user.is_active === false) {
+    const err = new Error('Account not activated');
+    err.code = 'ACCOUNT_NOT_ACTIVATED';
+    err.user = { user_id: user.user_id, username: user.username, full_name: user.full_name };
+    throw err;
+  }
+
   return { user_id: user.user_id, username: user.username, role: user.role };
+}
+
+async function updatePassword(userId, newPassword) {
+  const hash = await bcrypt.hash(newPassword, 10);
+  return db.updateUserPassword(userId, hash);
 }
 
 // Middleware: block access unless logged in
@@ -39,4 +58,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { registerUser, verifyLogin, requireLogin, requireAdmin };
+module.exports = { registerUser, verifyLogin, updatePassword, requireLogin, requireAdmin };

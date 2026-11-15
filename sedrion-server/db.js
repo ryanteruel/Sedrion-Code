@@ -5,12 +5,14 @@ const pool = new Pool({
   port: 5432,
   database: 'sedrion',
   user: 'postgres',
-  password: 'ruru0431',
+  password: process.env.PGPASSWORD,
 });
 
 async function query(text, params) {
   return pool.query(text, params);
 }
+
+// ---------- Users ----------
 async function updateUserRole(userId, newRole) {
   const result = await pool.query(
     `UPDATE users SET role = $1 WHERE user_id = $2 RETURNING user_id, username, role`,
@@ -20,10 +22,60 @@ async function updateUserRole(userId, newRole) {
 }
 
 async function getAllUsers() {
-  const result = await pool.query('SELECT user_id, username, role, created_at FROM users ORDER BY user_id');
+  const result = await pool.query(
+    `SELECT u.user_id, u.username, u.role, u.full_name, u.deployment_area, u.contact_number, u.avatar_url, u.ntfy_topic, u.created_at,
+            COUNT(a.id) FILTER (WHERE a.status != 'completed')::int AS active_tasks
+     FROM users u
+     LEFT JOIN assignments a ON a.assigned_to = u.user_id
+     GROUP BY u.user_id
+     ORDER BY u.deployment_area ASC, u.username ASC`
+  );
   return result.rows;
 }
-async function createSite({ name, lat, lon, elevationRelative }) {
+
+async function getUserByUsername(username) {
+  const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  return result.rows[0];
+}
+
+async function createUser({ username, passwordHash, role = 'cleaner', fullName = null, deploymentArea = 'Unassigned', contactNumber = null, avatarUrl = null, ntfyTopic = null, isActive = true, activationCode = null }) {
+  const result = await pool.query(
+    `INSERT INTO users (username, password_hash, role, full_name, deployment_area, contact_number, avatar_url, ntfy_topic, is_active, activation_code)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING user_id, username, role, full_name, deployment_area, contact_number, avatar_url, ntfy_topic, is_active, created_at`,
+    [username, passwordHash, role, fullName, deploymentArea, contactNumber, avatarUrl, ntfyTopic, isActive, activationCode]
+  );
+  return result.rows[0];
+}
+
+async function activateUser(userId) {
+  const result = await pool.query(
+    `UPDATE users SET is_active = TRUE, activation_code = NULL
+     WHERE user_id = $1
+     RETURNING user_id, username, role, full_name, ntfy_topic, is_active`,
+    [userId]
+  );
+  return result.rows[0];
+}
+
+async function setActivationCode(userId, code) {
+  const result = await pool.query(
+    `UPDATE users SET activation_code = $1 WHERE user_id = $2 RETURNING user_id, username`,
+    [code, userId]
+  );
+  return result.rows[0];
+}
+
+async function updateUserPassword(userId, passwordHash) {
+  const result = await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE user_id = $2 RETURNING user_id, username`,
+    [passwordHash, userId]
+  );
+  return result.rows[0];
+}
+
+// ---------- Sites ----------
+async function createSite({ name, lat, lon, elevationRelative = null }) {
   const result = await pool.query(
     `INSERT INTO sites (name, lat, lon, elevation_relative)
      VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -42,13 +94,54 @@ async function getSiteById(siteId) {
   return result.rows[0];
 }
 
-async function createNode({ nodeId, siteId, status = 'active' }) {
+async function deleteSite(siteId) {
+  await pool.query('DELETE FROM sensor_readings WHERE site_id = $1', [siteId]);
+  await pool.query('DELETE FROM maintenance_events WHERE site_id = $1', [siteId]);
+  await pool.query('DELETE FROM predictions WHERE site_id = $1', [siteId]);
+  await pool.query('DELETE FROM assignments WHERE site_id = $1', [siteId]);
+  await pool.query('DELETE FROM nodes WHERE site_id = $1', [siteId]);
   const result = await pool.query(
-    `INSERT INTO nodes (node_id, site_id, status)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [nodeId, siteId, status]
+    `DELETE FROM sites WHERE site_id = $1 RETURNING *`,
+    [siteId]
   );
   return result.rows[0];
+}
+async function updateSiteImage(siteId, imageUrl) {
+  const result = await pool.query(
+    `UPDATE sites SET image_url = $1 WHERE site_id = $2 RETURNING *`,
+    [imageUrl, siteId]
+  );
+  return result.rows[0];
+}
+
+// ---------- Nodes ----------
+async function createNode({ nodeId, deviceId = null, siteId, status = 'active' }) {
+  const result = await pool.query(
+    `INSERT INTO nodes (node_id, device_id, site_id, status, mode)
+     VALUES ($1, $2, $3, $4, 'operational')
+     ON CONFLICT (node_id) DO UPDATE
+       SET device_id = COALESCE(EXCLUDED.device_id, nodes.device_id),
+           site_id = EXCLUDED.site_id,
+           status = EXCLUDED.status
+     RETURNING *`,
+    [nodeId, deviceId, siteId, status]
+  );
+  return result.rows[0];
+}
+
+async function getNodeById(nodeId) {
+  const result = await pool.query('SELECT * FROM nodes WHERE node_id = $1', [nodeId]);
+  return result.rows[0];
+}
+
+async function getAllNodes() {
+  const result = await pool.query(
+    `SELECT n.*, s.name AS site_name
+     FROM nodes n
+     LEFT JOIN sites s ON n.site_id = s.site_id
+     ORDER BY n.node_id`
+  );
+  return result.rows;
 }
 
 async function getSiteIdForNode(nodeId) {
@@ -57,11 +150,33 @@ async function getSiteIdForNode(nodeId) {
 }
 
 async function getNodesForSite(siteId) {
-  const result = await pool.query('SELECT * FROM nodes WHERE site_id = $1', [siteId]);
+  const result = await pool.query('SELECT * FROM nodes WHERE site_id = $1 ORDER BY node_id', [siteId]);
   return result.rows;
 }
 
-async function insertReading({ nodeId, packetId, tofMm, rain, rssi }) {
+async function setNodeMode(nodeId, mode) {
+  const result = await pool.query(
+    `UPDATE nodes SET mode = $1 WHERE node_id = $2 RETURNING *`,
+    [mode, nodeId]
+  );
+  return result.rows[0];
+}
+
+async function updateNodeTelemetry({ nodeId, deviceId = null, mode, batteryMv, macAddr = null }) {
+  await pool.query(
+    `UPDATE nodes
+     SET mode = COALESCE($1, mode),
+         battery_mv = COALESCE($2, battery_mv),
+         device_id = COALESCE($3, device_id),
+         mac_addr = COALESCE($4, mac_addr),
+         last_seen = NOW()
+     WHERE node_id = $5`,
+    [mode, batteryMv ?? null, deviceId, macAddr, nodeId]
+  );
+}
+
+// ---------- Sensor Readings ----------
+async function insertReading({ nodeId, deviceId = null, packetId, tofMm, rain, batteryMv = null, rssi }) {
   const siteId = await getSiteIdForNode(nodeId);
 
   if (!siteId) {
@@ -71,11 +186,19 @@ async function insertReading({ nodeId, packetId, tofMm, rain, rssi }) {
 
   try {
     await pool.query(
-      `INSERT INTO sensor_readings (node_id, site_id, packet_id, tof_mm, rain, rssi)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [nodeId, siteId, packetId, tofMm, rain, rssi]
+      `INSERT INTO sensor_readings (node_id, site_id, packet_id, tof_mm, rain, battery_mv, rssi)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [nodeId, siteId, packetId, tofMm, rain, batteryMv, rssi]
     );
-    console.log('Inserted reading for node', nodeId, '(site', siteId + ')');
+
+    await updateNodeTelemetry({
+      nodeId,
+      deviceId,
+      mode: 'operational',
+      batteryMv,
+    });
+
+    console.log(`Inserted reading for node ${nodeId} (site ${siteId}) | Bat: ${batteryMv ?? 'N/A'} mV`);
   } catch (err) {
     console.error('DB insert error:', err);
   }
@@ -97,6 +220,7 @@ async function getReadingHistoryForSite(siteId, limit = 100) {
   return result.rows;
 }
 
+// ---------- Maintenance & Predictions ----------
 async function insertClearEvent({ siteId, clearedBy }) {
   const result = await pool.query(
     `INSERT INTO maintenance_events (site_id, cleared_at, operator)
@@ -122,19 +246,7 @@ async function getLatestPredictionForSite(siteId) {
   return result.rows[0];
 }
 
-async function getUserByUsername(username) {
-  const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-  return result.rows[0];
-}
-
-async function createUser({ username, passwordHash, role }) {
-  const result = await pool.query(
-    `INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING user_id, username, role`,
-    [username, passwordHash, role]
-  );
-  return result.rows[0];
-}
-
+// ---------- Assignments ----------
 async function createAssignment({ siteId, assignedTo, assignedBy }) {
   const result = await pool.query(
     `INSERT INTO assignments (site_id, assigned_to, assigned_by)
@@ -156,6 +268,13 @@ async function getPendingAssignmentsForUser(userId) {
   return result.rows;
 }
 
+async function updateSiteImage(siteId, imageUrl) {
+  const result = await pool.query(
+    `UPDATE sites SET image_url = $1 WHERE site_id = $2 RETURNING *`,
+    [imageUrl, siteId]
+  );
+  return result.rows[0];
+}
 async function completeAssignment(assignmentId) {
   const result = await pool.query(
     `UPDATE assignments SET status = 'completed', completed_at = NOW()
@@ -166,12 +285,13 @@ async function completeAssignment(assignmentId) {
 }
 
 module.exports = {
-  query,
-  createSite, getAllSites, getSiteById,
-  createNode, getSiteIdForNode, getNodesForSite,
+  query, activateUser, setActivationCode, updateUserPassword,
+  updateUserRole, getAllUsers, getUserByUsername, createUser,
+  createSite, getAllSites, getSiteById, deleteSite, updateSiteImage,
+  createNode, getNodeById, getAllNodes, getSiteIdForNode, getNodesForSite,
+  setNodeMode, updateNodeTelemetry,
   insertReading, getLatestReadingForSite, getReadingHistoryForSite,
   insertClearEvent, getLastClearForSite,
   getLatestPredictionForSite,
-  getUserByUsername, createUser,
   createAssignment, getPendingAssignmentsForUser, completeAssignment,
 };
