@@ -1,11 +1,10 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'sedrion',
-  user: 'postgres',
-  password: 'ruru0431', // <-- change if you set a different password on this laptop
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres.qjtujrfmzhquvynytunp:Rainheel070712@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres',
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 async function query(text, params) {
