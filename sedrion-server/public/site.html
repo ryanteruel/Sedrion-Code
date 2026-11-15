@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sedrion: Site</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 18, 26, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      z-index: 1500;
+    }
+    .modal-bg.on { display: flex; }
+    .modal-card {
+      background: #fff;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      width: 100%;
+      max-width: 680px;
+      padding: 1.3rem;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.25);
+    }
+    .assign-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: .9rem;
+    }
+    .cleaner-list {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      max-height: 270px;
+      overflow-y: auto;
+    }
+    .cleaner-item {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      padding: .65rem .8rem;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+    }
+    .cleaner-item:last-child { border-bottom: 0; }
+    .cleaner-item:hover { background: #f4f7fa; }
+    .cleaner-item.active {
+      background: #e6f2fa;
+      border-left: 4px solid #1f6f9f;
+    }
+    .avatar-sm {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #dbe6f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: .85rem;
+      flex-shrink: 0;
+    }
+    .profile-pane {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1rem;
+      background: #fafbfd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      justify-content: center;
+    }
+    .avatar-lg {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--ink);
+      background: #dbe6f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font: 800 1.6rem Archivo, sans-serif;
+      margin-bottom: .65rem;
+    }
+    @media (max-width: 600px) {
+      .assign-grid { grid-template-columns: 1fr; }
+    }
+    .photo-box {
+      position: relative;
+      display: none;
+      margin-bottom: .8rem;
+    }
+    .photo-box img {
+      width: 100%;
+      max-height: 260px;
+      object-fit: cover;
+      border-radius: 8px;
+      cursor: zoom-in;
+      display: block;
+    }
+    .photo-del {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(180, 35, 24, 0.92);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: .35rem .65rem;
+      font: 700 .8rem Archivo, sans-serif;
+      cursor: pointer;
+    }
+    .photo-del:hover { background: #911b12; }
+
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 18, 26, 0.88);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      z-index: 2000;
+      cursor: zoom-out;
+    }
+    .lightbox.on { display: flex; }
+    .lightbox img {
+      max-width: 94vw;
+      max-height: 90vh;
+      border-radius: 8px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 1.6rem;
+    }
+
+    .gw {
+      position: relative;
+      width: 64px;
+      height: 300px;
+      margin: 0 0 0 14px;
+      border: 2px solid var(--ink);
+      background: #fff;
+    }
+
+    .gw i {
+      position: absolute;
+      inset: auto 0 0;
+      height: 0;
+      background: var(--c, var(--water));
+      transition: height 1s cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .gw:after {
+      content: "";
+      position: absolute;
+      inset: 0 0 0 55%;
+      background: repeating-linear-gradient(
+        to top,
+        transparent 0 calc(10% - 1px),
+        var(--ink) calc(10% - 1px) 10%
+      );
+    }
+
+    .gw b {
+      position: absolute;
+      left: 72px;
+      font-size: .75rem;
+      transform: translateY(50%);
+    }
+
+    .pc {
+      font: 800 3rem/1 Archivo, sans-serif;
+      margin: 0;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: .35rem 1.2rem;
+      margin: 1rem 0 0;
+    }
+
+    dt {
+      color: var(--mute);
+      font-size: .9rem;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .sl {
+      font: 800 1.4rem Archivo, sans-serif;
+      margin: .3rem 0 0;
+    }
+
+    .chart {
+      position: relative;
+      height: 250px;
+    }
+
+    #map {
+      height: 280px;
+      border: 1px solid var(--ink);
+    }
+
+    .leaflet-tile-pane {
+      filter: saturate(.5) contrast(.95);
+    }
+
+    .node {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .6rem;
+      padding: .7rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .node:last-child { border: 0; }
+
+    .badge {
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: .2rem .55rem;
+      border-radius: 999px;
+      letter-spacing: .04em;
+    }
+    .badge.op { background: #dff4ea; color: #136f42; }
+    .badge.chg { background: #fff3cd; color: #8a5a00; }
+
+    .acts {
+      display: flex;
+      gap: .7rem;
+      flex-wrap: wrap;
+    }
+
+    .btn.danger {
+      background: var(--bad, #b42318);
+      color: #fff;
+      border-color: var(--bad, #b42318);
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="top">
+    <a class="brand" href="/dashboard.html"><i></i>Sedrion</a>
+    <div class="who">
+      <a href="/dashboard.html">All sites</a>
+      <span id="who"></span>
+      <button class="btn alt" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel hero">
+      <div>
+        <p class="pc" id="pc">–</p>
+        <div class="gw" id="gw">
+          <i id="gf"></i>
+          <b style="bottom:100%">Full</b>
+          <b style="bottom:50%">Half</b>
+          <b style="bottom:0">Empty</b>
+        </div>
+      </div>
+      <div>
+        <h1 id="nm">Loading…</h1>
+        <p class="mute" id="meta"></p>
+        <p class="sl" id="st"></p>
+        <dl>
+          <dt>Distance to debris</dt><dd id="tof">–</dd>
+          <dt>Rain</dt><dd id="rain">–</dd>
+          <dt>Battery</dt><dd id="bat">–</dd>
+          <dt>Signal</dt><dd id="rssi">–</dd>
+          <dt>Last reading</dt><dd id="upd">–</dd>
+          <dt>Last cleared</dt><dd id="clr">–</dd>
+          <dt>Forecast</dt><dd id="pred">–</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Distance history</h2>
+      <div class="chart"><canvas id="ch"></canvas></div>
+    </section>
+
+   <section class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.7rem">
+        <h2 style="margin:0">Location &amp; Drain Photo</h2>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button type="button" id="upload-photo-btn" class="btn alt" hidden onclick="$('photo-input').click()">+ Upload drain photo</button>
+          <a id="gmaps-btn" class="btn alt" target="_blank" rel="noopener">Open in Google Maps</a>
+          <a id="waze-btn" class="btn alt" target="_blank" rel="noopener">Open in Waze</a>
+        </div>
+      </div>
+
+      <div class="photo-box" id="photo-box">
+        <img id="site-photo" alt="Drain site photo" onclick="openLightbox(this.src)">
+        <button type="button" id="delete-photo-btn" class="photo-del" hidden onclick="deletePhoto()">Delete photo</button>
+      </div>
+
+      <input type="file" id="photo-input" accept="image/*" capture="environment" hidden onchange="uploadPhoto(this.files[0])">
+      <div id="map"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Nodes at this site</h2>
+      <div id="nodes"></div>
+    </section>
+
+    <section class="panel acts" id="acts"></section>
+  </main>
+
+  <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" alt="Expanded drain site photo">
+  </div>
+
+  <div class="modal-bg" id="assign-modal" onclick="if(event.target===this)closeAssignModal()">
+    <div class="modal-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.7rem">
+        <h2 style="margin:0">Assign Cleaner to Site</h2>
+        <button type="button" class="btn alt" style="padding:.25rem .6rem" onclick="closeAssignModal()">✕</button>
+      </div>
+
+      <label style="display:block;font-weight:600;font-size:.9rem">
+        Area of Deployment
+        <select id="area-filter" style="width:100%;margin-top:.3rem;padding:.5rem" onchange="renderCleanerList()">
+          <option value="">All Areas</option>
+        </select>
+      </label>
+
+      <div class="assign-grid">
+        <div class="cleaner-list" id="cleaner-list"></div>
+        <div class="profile-pane" id="cleaner-profile">
+          <p class="mute">Select a cleaner on the left to view their profile.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1rem">
+        <button type="button" class="btn alt" onclick="closeAssignModal()">Cancel</button>
+        <button type="button" class="btn" id="confirm-assign-btn" disabled onclick="confirmAssign()">Assign Selected Cleaner</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get('id');
+    const B = '/api/sites/' + encodeURIComponent(id);
+    let me, chart, map;
+
+    function fmtBat(mv) {
+      if (mv == null) return '–';
+      const v = (mv / 1000).toFixed(2);
+      const p = Math.max(0, Math.min(100, Math.round((mv - 3000) / (4200 - 3000) * 100)));
+      return `${v} V (${p}%)${mv < 3150 ? ' — Swap needed' : ''}`;
+    }
+
+    function show(d) {
+      const s = d.site;
+      const l = d.latest;
+      if (s.image_url) {
+        $('site-photo').src = s.image_url;
+        $('photo-box').style.display = 'block';
+        if (me && me.role === 'admin') {
+          $('delete-photo-btn').hidden = false;
+        }
+      } else {
+        $('photo-box').style.display = 'none';
+        $('site-photo').removeAttribute('src');
+      }
+
+      $('nm').textContent = s.name;
+      document.title = 'Sedrion: ' + s.name;
+      $('meta').textContent = (+s.lat).toFixed(5) + ', ' + (+s.lon).toFixed(5);
+      $('gmaps-btn').href = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}`;
+      $('waze-btn').href = `https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes`;
+
+      const ok = l && l.tof_mm >= 0;
+      const p = ok ? pct(l.tof_mm, s) : null;
+      const t = tone(p);
+
+      $('pc').textContent = ok ? Math.round(p) + '%' : '–';
+      $('gf').style.height = (p || 0) + '%';
+      $('gf').style.setProperty('--c', t.c);
+
+      $('st').textContent = l ? (ok ? t.w : 'Sensor out of range') : 'Waiting for the first reading';
+      $('st').className = 'sl ' + t.k;
+
+      const primaryNode = d.nodes[0];
+      const latestMv = primaryNode?.battery_mv ?? l?.battery_mv ?? null;
+
+      $('tof').textContent = l ? (ok ? l.tof_mm + ' mm' : 'No echo') : '–';
+      $('rain').textContent = l ? (l.rain ? 'Raining' : 'Dry') : '–';
+      $('bat').textContent = fmtBat(latestMv);
+      $('rssi').textContent = l ? Math.round(l.rssi) + ' dBm' : '–';
+      $('upd').textContent = l ? new Date(l.time).toLocaleString() + ' from ' + l.node_id : 'None yet';
+      $('clr').textContent = d.lastClear ? new Date(d.lastClear.cleared_at).toLocaleString() : 'Never logged';
+      $('pred').textContent = left(d.prediction && d.prediction.predicted_hours_remaining);
+
+      $('nodes').innerHTML = d.nodes.map(n => {
+        const isCharging = n.mode === 'charging';
+        const nextMode = isCharging ? 'operational' : 'charging';
+        const modeBtn = me && me.role === 'admin'
+          ? `<button class="btn alt" style="font-size:.8rem;padding:.35rem .65rem" onclick="switchMode('${esc(n.node_id)}','${nextMode}')">
+               Switch to ${nextMode === 'charging' ? 'Charging' : 'Operational'}
+             </button>`
+          : '';
+
+        return `
+          <div class="node">
+            <div>
+              <strong>${esc(n.node_id)}</strong>
+              ${n.device_id != null ? `<span class="mute">(ID #${n.device_id})</span>` : ''}
+              <span class="badge ${isCharging ? 'chg' : 'op'}">${esc(n.mode || 'operational')}</span>
+              ${l && l.node_id === n.node_id ? '<span class="ok"> (reporting)</span>' : ''}
+              <div class="mute" style="font-size:.85rem;margin-top:.2rem">Battery: ${fmtBat(n.battery_mv)}</div>
+            </div>
+            <div>${modeBtn}</div>
+          </div>`;
+      }).join('') || '<p class="mute">No nodes registered here yet.</p>';
+
+      if (!map) {
+        map = L.map('map').setView([s.lat, s.lon], 16);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        L.marker([s.lat, s.lon]).addTo(map);
+      }
+    }
+
+    async function switchMode(nodeId, mode) {
+      try {
+        await j('/api/nodes/' + encodeURIComponent(nodeId) + '/mode', { mode });
+        toast(`Switched Node ${nodeId} to ${mode.toUpperCase()}`);
+        refresh();
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+    async function uploadPhoto(file) {
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('photo', file);
+      try {
+        toast('Uploading photo…');
+        const r = await fetch(B + '/photo', { method: 'POST', body: fd });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.statusText);
+        toast('Photo updated.');
+        refresh();
+      } catch (x) {
+        toast(x.message);
+      } finally {
+        $('photo-input').value = '';
+      }
+    }
+
+    function openLightbox(src) {
+      if (!src) return;
+      $('lightbox-img').src = src;
+      $('lightbox').classList.add('on');
+    }
+
+    function closeLightbox() {
+      $('lightbox').classList.remove('on');
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+
+    async function deletePhoto() {
+      if (!confirm('Delete this drain photo?')) return;
+      try {
+        await j(B + '/photo', null, 'DELETE');
+        toast('Photo deleted.');
+        refresh();
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    function plot(r, s) {
+      const lb = r.map(x => new Date(x.time).toLocaleString());
+      const dt = r.map(x => x.tof_mm >= 0 ? x.tof_mm : null);
+
+      if (!chart) {
+        Chart.defaults.color = '#5d7185';
+        chart = new Chart($('ch'), {
+          type: 'line',
+          data: {
+            labels: lb,
+            datasets: [{
+              label: 'Distance (mm)',
+              data: dt,
+              borderColor: '#1f6f9f',
+              backgroundColor: 'rgba(31,111,159,.12)',
+              fill: true,
+              pointRadius: 0,
+              tension: .25,
+              spanGaps: true
+            }]
+          },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                suggestedMin: s.full_mm ?? 50,
+                suggestedMax: s.empty_mm ?? 500,
+                title: { display: true, text: 'mm to debris (lower means fuller)' }
+              },
+              x: { ticks: { maxTicksLimit: 6 } }
+            }
+          }
+        });
+      } else {
+        chart.data.labels = lb;
+        chart.data.datasets[0].data = dt;
+        chart.update();
+      }
+    }
+
+    async function refresh() {
+      try {
+        const d = await j(B);
+        show(d);
+        plot(await j(B + '/readings?limit=100'), d.site);
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+       let allCleaners = [];
+    let selectedCleanerId = null;
+
+    async function openAssignModal() {
+      try {
+        const users = await j('/api/users');
+        allCleaners = users.filter(u => u.role === 'cleaner');
+        if (!allCleaners.length) return toast('No cleaner accounts registered yet.');
+
+        const areas = [...new Set(allCleaners.map(u => u.deployment_area || 'Unassigned'))].sort();
+        $('area-filter').innerHTML =
+          '<option value="">All Areas (' + allCleaners.length + ')</option>' +
+          areas.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+
+        selectedCleanerId = null;
+        $('confirm-assign-btn').disabled = true;
+        renderCleanerList();
+        $('assign-modal').classList.add('on');
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    function closeAssignModal() {
+      $('assign-modal').classList.remove('on');
+    }
+
+    function renderCleanerList() {
+      const area = $('area-filter').value;
+      const filtered = area
+        ? allCleaners.filter(u => (u.deployment_area || 'Unassigned') === area)
+        : allCleaners;
+
+      if (!filtered.length) {
+        $('cleaner-list').innerHTML = '<p class="mute" style="padding:1rem">No cleaners in this area.</p>';
+        $('cleaner-profile').innerHTML = '<p class="mute">No cleaner selected.</p>';
+        selectedCleanerId = null;
+        $('confirm-assign-btn').disabled = true;
+        return;
+      }
+
+      if (!filtered.some(u => u.user_id === selectedCleanerId)) {
+        selectedCleanerId = filtered[0].user_id;
+      }
+
+      $('cleaner-list').innerHTML = filtered.map(u => {
+        const displayName = u.full_name || u.username;
+        const initials = displayName.slice(0, 2).toUpperCase();
+        const thumb = u.avatar_url
+          ? `<img class="avatar-sm" src="${esc(u.avatar_url)}" alt="${esc(displayName)}">`
+          : `<div class="avatar-sm">${esc(initials)}</div>`;
+
+        return `
+          <div class="cleaner-item ${u.user_id === selectedCleanerId ? 'active' : ''}" onclick="selectCleaner(${u.user_id})">
+            ${thumb}
+            <div style="min-width:0">
+              <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(displayName)}</div>
+              <div class="mute" style="font-size:.78rem">${esc(u.deployment_area || 'Unassigned')} · ${u.active_tasks || 0} active</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      selectCleaner(selectedCleanerId, false);
+    }
+
+    function selectCleaner(userId, reRender = true) {
+      selectedCleanerId = userId;
+      $('confirm-assign-btn').disabled = false;
+      if (reRender) renderCleanerList();
+
+      const u = allCleaners.find(x => x.user_id === userId);
+      if (!u) return;
+      const displayName = u.full_name || u.username;
+      const initials = displayName.slice(0, 2).toUpperCase();
+      const photo = u.avatar_url
+        ? `<img class="avatar-lg" src="${esc(u.avatar_url)}" alt="${esc(displayName)}">`
+        : `<div class="avatar-lg">${esc(initials)}</div>`;
+
+      $('cleaner-profile').innerHTML = `
+        ${photo}
+        <strong style="font-size:1.1rem">${esc(displayName)}</strong>
+        <span class="mute" style="font-size:.85rem">@${esc(u.username)}</span>
+        <span class="badge op" style="margin:.5rem 0">${esc(u.deployment_area || 'Unassigned')}</span>
+        <div class="mute" style="font-size:.85rem;margin-top:.2rem">
+          Contact: <strong>${esc(u.contact_number || 'Not provided')}</strong>
+        </div>
+        <div class="mute" style="font-size:.85rem;margin-top:.2rem">
+          Active assignments: <strong>${u.active_tasks || 0}</strong>
+        </div>
+      `;
+    }
+
+    async function confirmAssign() {
+      if (!selectedCleanerId) return;
+      try {
+        await j(B + '/assign', { assignedTo: selectedCleanerId });
+        const u = allCleaners.find(x => x.user_id === selectedCleanerId);
+        toast('Assigned to ' + (u?.full_name || u?.username || 'cleaner') + '.');
+        closeAssignModal();
+      } catch (x) {
+        toast(x.message);
+      }
+    }
+
+    function acts() {
+      const a = $('acts');
+      a.innerHTML = '';
+
+      const mk = (text, fn, cls) => {
+        const b = document.createElement('button');
+        b.className = 'btn' + (cls ? ' ' + cls : '');
+        b.textContent = text;
+        b.onclick = fn;
+        a.append(b);
+      };
+      
+   
+    
+
+      mk('Mark as cleared', async () => {
+        if (!confirm('Log this site as cleared now? Clear events train the prediction model.')) return;
+        try {
+          await j(B + '/clear', null);
+          toast('Marked as cleared.');
+          refresh();
+        } catch (x) {
+          toast(x.message);
+        }
+      });
+
+      if (me.role === 'admin') {
+        mk('Add node', async () => {
+          const nid = prompt('Enter the nodeTag (e.g. A1, B2):');
+          if (!nid || !nid.trim()) return;
+          const did = prompt('Enter numeric DEVICE_ID flashed on the node (e.g. 1, 2, 3):');
+          try {
+            await j(B + '/nodes', {
+              node_id: nid.trim(),
+              device_id: did ? parseInt(did.trim(), 10) : null
+            });
+            toast('Node added.');
+            refresh();
+          } catch (x) {
+            toast(x.message);
+          }
+        }, 'alt');
+
+       mk('Assign a cleaner', openAssignModal, 'alt');
+
+        mk('Delete site', async () => {
+          if (!confirm('Permanently delete this site and all its readings, nodes, and history? This cannot be undone.')) return;
+          try {
+            await j(B, null, 'DELETE');
+            location.href = '/dashboard.html';
+          } catch (x) {
+            toast(x.message);
+          }
+        }, 'danger');
+      }
+    }
+
+    (async () => {
+      if (!id) {
+        $('nm').textContent = 'No site selected';
+        return;
+      }
+      me = await who();
+      me = await who();
+      if (me.role === 'admin') {
+        $('upload-photo-btn').hidden = false;
+      }
+      acts();
+      acts();
+      await refresh();
+      setInterval(refresh, 10000);
+    })();
+  </script>
+</body>
+</html> 

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sedrion: Sign in</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body {
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+    }
+    .box {
+      width: min(400px, 100%);
+    }
+    .big {
+      font: 800 clamp(3rem, 12vw, 5rem)/.9 Archivo, sans-serif;
+      margin: 0 0 .6rem;
+      letter-spacing: -.04em;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .5rem;
+      margin-bottom: 1rem;
+    }
+    .tabs .btn {
+      padding: .55rem;
+      font-size: .9rem;
+    }
+    .box .sub-btn {
+      width: 100%;
+      padding: .8rem;
+      margin-top: .4rem;
+    }
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: .55rem;
+      margin: .6rem 0 .8rem;
+      font-size: .85rem;
+      line-height: 1.35;
+    }
+    .check-row input[type="checkbox"] {
+      width: auto;
+      margin: .15rem 0 0;
+    }
+    #err, .modal-err {
+      min-height: 1.4rem;
+      margin: .6rem 0 0;
+      color: var(--bad);
+      font-size: .9rem;
+    }
+    #err.ok, .modal-err.ok {
+      color: #136f42;
+    }
+    /* Pop-up Modal Window */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+      z-index: 100;
+    }
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+    .modal-card {
+      width: min(390px, 100%);
+      position: relative;
+    }
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .6rem;
+    }
+    .modal-head h3 {
+      margin: 0;
+    }
+    .close-x {
+      background: none;
+      border: none;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+      color: inherit;
+      padding: .2rem .4rem;
+    }
+    .code-input {
+      font-family: monospace;
+      font-size: 1.35rem;
+      letter-spacing: .35rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <p class="big">Sedrion</p>
+    <p class="mute" style="margin:0 0 1.4rem">Know which drain filter fills next, before it floods.</p>
+
+    <form class="panel" onsubmit="go(event)">
+      <div class="tabs">
+        <button type="button" id="tab-login" class="btn" onclick="setMode('login')">Sign in</button>
+        <button type="button" id="tab-reg" class="btn alt" onclick="setMode('register')">Volunteer</button>
+      </div>
+
+      <!-- Sign In Fields -->
+      <div id="login-fields">
+        <label for="u">Email or Username</label>
+        <input id="u" autocomplete="username" required>
+
+        <label for="p">Password</label>
+        <input id="p" type="password" autocomplete="current-password" required>
+
+        <div style="text-align:right;margin:.1rem 0 .6rem;">
+          <a href="#" onclick="openForgotModal(); return false;" style="font-size:.85rem;">Forgot password?</a>
+        </div>
+      </div>
+
+      <!-- Volunteer Registration Fields -->
+      <div id="reg-fields" hidden>
+        <label for="fn">First Name</label>
+        <input id="fn" autocomplete="given-name" placeholder="Juan">
+
+        <label for="ln">Last Name</label>
+        <input id="ln" autocomplete="family-name" placeholder="Dela Cruz">
+
+        <label for="em">Email</label>
+        <input id="em" type="email" autocomplete="email" placeholder="juan@example.com">
+
+        <label for="p1">Enter Password</label>
+        <input id="p1" type="password" autocomplete="new-password">
+
+        <label for="p2">Re-enter Password</label>
+        <input id="p2" type="password" autocomplete="new-password">
+
+        <label class="check-row" for="agree">
+          <input id="agree" type="checkbox">
+          <span>I agree to the Sedrion Volunteer Terms &amp; Data Privacy Policy.</span>
+        </label>
+      </div>
+
+      <button class="btn sub-btn" id="sub-btn">Sign in</button>
+      <p id="err" role="alert"></p>
+    </form>
+  </main>
+
+  <!-- Pop-Up Window 1: Forgot Password -->
+  <div id="forgot-modal" class="modal-backdrop" hidden>
+    <div class="panel modal-card">
+      <div class="modal-head">
+        <h3>Forgot Password</h3>
+        <button type="button" class="close-x" onclick="closeForgotModal()" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Step 1: Prompt for Email -->
+      <form id="fp-step1" onsubmit="sendForgotCode(event)">
+        <p class="mute" style="margin:0 0 .8rem;font-size:.9rem;">
+          Enter your registered email address and we'll send you a 6-digit code to sign in.
+        </p>
+        <label for="fp-email">Email</label>
+        <input id="fp-email" type="email" required placeholder="juan@example.com">
+        <button class="btn sub-btn" id="fp-send-btn">Send 6-Digit Code</button>
+      </form>
+
+      <!-- Step 2: Enter 6-Digit Code -> Logs In -->
+      <form id="fp-step2" hidden onsubmit="verifyForgotCode(event)">
+        <p class="mute" style="margin:0 0 .8rem;font-size:.9rem;">
+          We sent a 6-digit code to <strong id="fp-sent-to"></strong>. Enter it below to log in.
+        </p>
+        <label for="fp-code">6-Digit Code</label>
+        <input id="fp-code" class="code-input" inputmode="numeric" maxlength="6" required placeholder="000000">
+
+        <label for="fp-newpass">New Password <span class="mute">(optional)</span></label>
+        <input id="fp-newpass" type="password" autocomplete="new-password" placeholder="Leave blank to keep current">
+
+        <button class="btn sub-btn" id="fp-verify-btn">Verify &amp; Log In</button>
+        <div style="text-align:center;margin-top:.6rem;">
+          <a href="#" onclick="resetForgotModal(); return false;" style="font-size:.85rem;">Use a different email</a>
+        </div>
+      </form>
+
+      <p id="fp-err" class="modal-err" role="alert"></p>
+    </div>
+  </div>
+
+  <!-- Pop-Up Window 2: Account Activation -->
+  <div id="activate-modal" class="modal-backdrop" hidden>
+    <div class="panel modal-card">
+      <div class="modal-head">
+        <h3>Activate Account</h3>
+        <button type="button" class="close-x" onclick="closeActivateModal()" aria-label="Close">&times;</button>
+      </div>
+      <form onsubmit="submitActivation(event)">
+        <p class="mute" style="margin:0 0 .8rem;font-size:.9rem;">
+          Enter the 6-digit activation code sent to <strong id="act-email-label"></strong>.
+        </p>
+        <label for="act-code">6-Digit Activation Code</label>
+        <input id="act-code" class="code-input" inputmode="numeric" maxlength="6" required placeholder="000000">
+        <button class="btn sub-btn" id="act-btn">Activate &amp; Sign In</button>
+        <div style="text-align:center;margin-top:.6rem;">
+          <a href="#" onclick="resendActivationCode(); return false;" style="font-size:.85rem;">Resend activation code</a>
+        </div>
+      </form>
+      <p id="act-err" class="modal-err" role="alert"></p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    let mode = 'login';
+    let fpEmailSaved = '';
+    let actEmailSaved = '';
+
+    function setMode(m) {
+      mode = m;
+      const isLogin = (m === 'login');
+
+      $('login-fields').hidden = !isLogin;
+      $('reg-fields').hidden = isLogin;
+
+      $('u').required = isLogin;
+      $('p').required = isLogin;
+
+      $('fn').required = !isLogin;
+      $('ln').required = !isLogin;
+      $('em').required = !isLogin;
+      $('p1').required = !isLogin;
+      $('p2').required = !isLogin;
+      $('agree').required = !isLogin;
+
+      $('sub-btn').textContent = isLogin ? 'Sign in' : 'Volunteer';
+      $('tab-login').className = isLogin ? 'btn' : 'btn alt';
+      $('tab-reg').className = !isLogin ? 'btn' : 'btn alt';
+      $('err').textContent = '';
+      $('err').className = '';
+    }
+
+    // ---------- Main Sign In / Volunteer Submit ----------
+    async function go(e) {
+      e.preventDefault();
+      const err = $('err');
+      err.textContent = '';
+      err.className = '';
+
+      try {
+        if (mode === 'login') {
+          const r = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: $('u').value.trim(),
+              password: $('p').value
+            })
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.status === 403 && d.code === 'ACCOUNT_NOT_ACTIVATED') {
+            openActivateModal(d.email || $('u').value.trim());
+            return;
+          }
+          if (!r.ok) throw new Error(d.error || 'Login failed');
+          location.href = '/dashboard.html';
+        } else {
+          const p1 = $('p1').value;
+          const p2 = $('p2').value;
+          if (p1 !== p2) throw new Error('Passwords do not match.');
+          if (!$('agree').checked) throw new Error('Please check the agreement box.');
+
+          const email = $('em').value.trim().toLowerCase();
+          const btn = $('sub-btn');
+          btn.disabled = true;
+          btn.textContent = 'Sending activation email...';
+
+          const r = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              first_name: $('fn').value.trim(),
+              last_name: $('ln').value.trim(),
+              email,
+              password: p1
+            })
+          });
+          const d = await r.json().catch(() => ({}));
+          btn.disabled = false;
+          btn.textContent = 'Volunteer';
+
+          if (!r.ok) throw new Error(d.error || 'Registration failed');
+
+          setMode('login');
+          $('u').value = email;
+          openActivateModal(email);
+        }
+      } catch (x) {
+        $('sub-btn').disabled = false;
+        $('sub-btn').textContent = mode === 'login' ? 'Sign in' : 'Volunteer';
+        err.textContent = x.message === 'Invalid username or password'
+          ? 'Wrong email/username or password.'
+          : x.message;
+      }
+    }
+
+    // ---------- Forgot Password Modal ----------
+    function openForgotModal() {
+      resetForgotModal();
+      const typed = $('u').value.trim();
+      if (typed.includes('@')) $('fp-email').value = typed;
+      $('forgot-modal').hidden = false;
+      $('fp-email').focus();
+    }
+
+    function closeForgotModal() {
+      $('forgot-modal').hidden = true;
+    }
+
+    function resetForgotModal() {
+      $('fp-step1').hidden = false;
+      $('fp-step2').hidden = true;
+      $('fp-code').value = '';
+      $('fp-newpass').value = '';
+      $('fp-err').textContent = '';
+      $('fp-err').className = 'modal-err';
+    }
+
+    async function sendForgotCode(e) {
+      e.preventDefault();
+      const fpErr = $('fp-err');
+      const btn = $('fp-send-btn');
+      fpErr.textContent = '';
+      fpErr.className = 'modal-err';
+
+      const email = $('fp-email').value.trim().toLowerCase();
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        await j('/api/forgot-password', { email });
+        fpEmailSaved = email;
+        $('fp-sent-to').textContent = email;
+        $('fp-step1').hidden = true;
+        $('fp-step2').hidden = false;
+        fpErr.className = 'modal-err ok';
+        fpErr.textContent = '6-digit code sent to your email!';
+        $('fp-code').focus();
+      } catch (x) {
+        fpErr.textContent = x.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send 6-Digit Code';
+      }
+    }
+
+    async function verifyForgotCode(e) {
+      e.preventDefault();
+      const fpErr = $('fp-err');
+      const btn = $('fp-verify-btn');
+      fpErr.textContent = '';
+      fpErr.className = 'modal-err';
+
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+
+      try {
+        await j('/api/forgot-password/verify', {
+          email: fpEmailSaved,
+          code: $('fp-code').value.trim(),
+          new_password: $('fp-newpass').value
+        });
+        location.href = '/dashboard.html';
+      } catch (x) {
+        fpErr.textContent = x.message;
+        btn.disabled = false;
+        btn.textContent = 'Verify & Log In';
+      }
+    }
+
+    // ---------- Activation Modal ----------
+    function openActivateModal(email) {
+      actEmailSaved = email;
+      $('act-email-label').textContent = email;
+      $('act-code').value = '';
+      $('act-err').textContent = '';
+      $('act-err').className = 'modal-err';
+      $('activate-modal').hidden = false;
+      $('act-code').focus();
+    }
+
+    function closeActivateModal() {
+      $('activate-modal').hidden = true;
+    }
+
+    async function submitActivation(e) {
+      e.preventDefault();
+      const actErr = $('act-err');
+      const btn = $('act-btn');
+      actErr.textContent = '';
+      actErr.className = 'modal-err';
+
+      btn.disabled = true;
+      btn.textContent = 'Activating...';
+
+      try {
+        await j('/api/activate', {
+          email: actEmailSaved,
+          code: $('act-code').value.trim()
+        });
+        location.href = '/dashboard.html';
+      } catch (x) {
+        actErr.textContent = x.message;
+        btn.disabled = false;
+        btn.textContent = 'Activate & Sign In';
+      }
+    }
+
+    async function resendActivationCode() {
+      const actErr = $('act-err');
+      actErr.textContent = '';
+      actErr.className = 'modal-err';
+      try {
+        await j('/api/resend-activation', { email: actEmailSaved });
+        actErr.className = 'modal-err ok';
+        actErr.textContent = 'New 6-digit activation code sent!';
+      } catch (x) {
+        actErr.textContent = x.message;
+      }
+    }
+  </script>
+</body>
+</html>
