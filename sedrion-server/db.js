@@ -11,6 +11,10 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
+async function query(text, params) {
+  return pool.query(text, params);
+}
+
 // ---------- Users ----------
 async function updateUserRole(userId, newRole) {
   const result = await pool.query(
