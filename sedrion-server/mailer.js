@@ -1,14 +1,9 @@
 const nodemailer = require('nodemailer');
 
-// Paste your Gmail address and 16-character Google App Password here:
-const GMAIL_USER = process.env.SMTP_USER || 'teruellryan@gmail.com';
-const GMAIL_APP_PASSWORD = process.env.SMTP_PASS || 'esoq qqmc pgup ofcg';
+const GMAIL_USER = process.env.SMTP_USER;
+const GMAIL_APP_PASSWORD = process.env.SMTP_PASS;
 
-const isConfigured =
-  GMAIL_USER &&
-  GMAIL_APP_PASSWORD &&
-  !GMAIL_USER.includes('your-email') &&
-  !GMAIL_APP_PASSWORD.includes('xxxx');
+const isConfigured = Boolean(GMAIL_USER && GMAIL_APP_PASSWORD);
 
 const transporter = isConfigured
   ? nodemailer.createTransport({
@@ -22,7 +17,7 @@ const transporter = isConfigured
 
 async function sendMail({ to, subject, html, fallbackLog }) {
   if (!transporter) {
-    console.log(`\n[EMAIL PREVIEW — Configure GMAIL_USER & GMAIL_APP_PASSWORD in mailer.js]`);
+    console.log('\n[EMAIL PREVIEW — Configure SMTP_USER and SMTP_PASS environment variables]');
     console.log(`To: ${to} | Subject: ${subject}`);
     console.log(`${fallbackLog}\n`);
     return;
